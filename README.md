@@ -16,7 +16,7 @@ An AI-powered lung CT scan analysis web app.
 - Normal
 
 ## Live Demo
-👉 https://SudheerKothapalli.github.io/pulmoscan
+👉 [https://SudheerKothapalli.github.io/pulmoscan](https://sudheerkothapalli.github.io/PulmoScan.AI/)
 
 ## Tech Stack
 - PyTorch · U-Net · EfficientNet-B0 · GradCAM
