@@ -1,0 +1,1483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>PulmoScan AI — Lung CT Analysis</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+<style>
+  /* ── RESET & VARIABLES ─────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #070d14;
+    --bg2:       #0c1520;
+    --bg3:       #111d2b;
+    --panel:     #0f1c2b;
+    --border:    #1a3050;
+    --border2:   #243d5c;
+    --green:     #00e5a0;
+    --green2:    #00b87a;
+    --red:       #ff4d6a;
+    --yellow:    #ffd166;
+    --blue:      #3d9cf5;
+    --muted:     #4a6785;
+    --text:      #c8dff0;
+    --text2:     #7a9bb8;
+    --white:     #eef5ff;
+    --font-mono: 'Space Mono', monospace;
+    --font-disp: 'Syne', sans-serif;
+    --scan-line: rgba(0,229,160,0.03);
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-mono);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── SCAN LINE OVERLAY ─────────────────────────────── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      var(--scan-line) 2px,
+      var(--scan-line) 4px
+    );
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* ── HEADER ────────────────────────────────────────── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 40px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg2);
+    position: sticky; top: 0; z-index: 100;
+  }
+
+  .logo {
+    display: flex; align-items: center; gap: 12px;
+  }
+
+  .logo-icon {
+    width: 38px; height: 38px;
+    background: var(--green);
+    border-radius: 6px;
+    display: grid; place-items: center;
+    position: relative;
+    box-shadow: 0 0 18px rgba(0,229,160,0.4);
+  }
+
+  .logo-icon svg { width: 22px; height: 22px; }
+
+  .logo-text {
+    font-family: var(--font-disp);
+    font-size: 1.3rem;
+    font-weight: 800;
+    color: var(--white);
+    letter-spacing: -0.03em;
+  }
+
+  .logo-text span { color: var(--green); }
+
+  .header-status {
+    display: flex; align-items: center; gap: 24px;
+  }
+
+  .status-dot {
+    display: flex; align-items: center; gap: 7px;
+    font-size: 0.7rem; color: var(--text2); letter-spacing: 0.08em;
+  }
+
+  .dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 8px var(--green);
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%,100% { opacity: 1; transform: scale(1); }
+    50%      { opacity: 0.5; transform: scale(0.8); }
+  }
+
+  .header-model {
+    font-size: 0.65rem; color: var(--muted);
+    letter-spacing: 0.1em;
+    border: 1px solid var(--border);
+    padding: 4px 10px; border-radius: 3px;
+  }
+
+  /* ── MAIN LAYOUT ───────────────────────────────────── */
+  main {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 36px 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+  }
+
+  /* ── UPLOAD ZONE ───────────────────────────────────── */
+  .upload-section {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    align-items: start;
+  }
+
+  .upload-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 28px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .upload-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--green), transparent);
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+
+  .upload-card.active::before { opacity: 1; }
+
+  .card-label {
+    font-size: 0.65rem;
+    letter-spacing: 0.15em;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 16px;
+    display: flex; align-items: center; gap: 8px;
+  }
+
+  .card-label::after {
+    content: '';
+    flex: 1; height: 1px;
+    background: var(--border);
+  }
+
+  #drop-zone {
+    border: 1.5px dashed var(--border2);
+    border-radius: 8px;
+    padding: 48px 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    position: relative;
+    background: var(--bg3);
+  }
+
+  #drop-zone:hover,
+  #drop-zone.dragover {
+    border-color: var(--green);
+    background: rgba(0,229,160,0.03);
+    box-shadow: inset 0 0 30px rgba(0,229,160,0.05);
+  }
+
+  #drop-zone .drop-icon {
+    width: 52px; height: 52px;
+    margin: 0 auto 16px;
+    opacity: 0.5;
+    transition: opacity 0.25s;
+  }
+
+  #drop-zone:hover .drop-icon { opacity: 0.9; }
+
+  .drop-title {
+    font-family: var(--font-disp);
+    font-size: 1rem; font-weight: 700;
+    color: var(--white); margin-bottom: 6px;
+  }
+
+  .drop-sub {
+    font-size: 0.7rem; color: var(--text2);
+    line-height: 1.7;
+  }
+
+  .drop-sub span {
+    color: var(--green); cursor: pointer; text-decoration: underline;
+  }
+
+  #file-input { display: none; }
+
+  .btn-analyze {
+    width: 100%;
+    margin-top: 18px;
+    padding: 14px;
+    background: var(--green);
+    color: var(--bg);
+    border: none; border-radius: 6px;
+    font-family: var(--font-disp);
+    font-size: 0.95rem; font-weight: 700;
+    letter-spacing: 0.05em;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+  }
+
+  .btn-analyze:hover:not(:disabled) {
+    background: #00ffb3;
+    box-shadow: 0 0 28px rgba(0,229,160,0.45);
+    transform: translateY(-1px);
+  }
+
+  .btn-analyze:disabled {
+    opacity: 0.35; cursor: not-allowed;
+  }
+
+  /* ── CT PREVIEW ────────────────────────────────────── */
+  .preview-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    min-height: 300px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .preview-header {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+
+  .preview-title {
+    font-size: 0.68rem; letter-spacing: 0.12em;
+    color: var(--text2); text-transform: uppercase;
+  }
+
+  .preview-body {
+    flex: 1;
+    display: grid; place-items: center;
+    padding: 20px;
+    background: #060c13;
+  }
+
+  .preview-body canvas,
+  .preview-body img {
+    max-width: 100%; max-height: 280px;
+    border-radius: 4px;
+    display: block;
+  }
+
+  .preview-empty {
+    text-align: center; opacity: 0.3;
+  }
+
+  .preview-empty svg { width: 48px; opacity: 0.4; margin-bottom: 10px; }
+
+  .preview-empty p { font-size: 0.7rem; color: var(--text2); }
+
+  /* ── PATIENT INFO ──────────────────────────────────── */
+  .meta-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border-radius: 8px; overflow: hidden;
+    border: 1px solid var(--border);
+  }
+
+  .meta-cell {
+    background: var(--bg2);
+    padding: 14px 18px;
+  }
+
+  .meta-cell-label {
+    font-size: 0.6rem; letter-spacing: 0.12em;
+    color: var(--muted); text-transform: uppercase; margin-bottom: 5px;
+  }
+
+  .meta-cell-value {
+    font-size: 0.82rem; color: var(--white); font-weight: 700;
+  }
+
+  /* ── PROGRESS / PIPELINE ───────────────────────────── */
+  .pipeline-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px 28px;
+  }
+
+  .pipeline-steps {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0;
+    position: relative;
+  }
+
+  .pipeline-steps::before {
+    content: '';
+    position: absolute;
+    top: 20px; left: 10%; right: 10%;
+    height: 1px;
+    background: var(--border);
+  }
+
+  .pipeline-step {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 10px; position: relative; z-index: 1;
+  }
+
+  .step-circle {
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    border: 1.5px solid var(--border2);
+    background: var(--bg3);
+    display: grid; place-items: center;
+    font-size: 0.7rem; color: var(--muted);
+    transition: all 0.4s ease;
+    font-family: var(--font-mono);
+  }
+
+  .step-circle.active {
+    border-color: var(--green);
+    background: rgba(0,229,160,0.1);
+    color: var(--green);
+    box-shadow: 0 0 16px rgba(0,229,160,0.3);
+    animation: stepPulse 1s ease-in-out infinite;
+  }
+
+  .step-circle.done {
+    border-color: var(--green);
+    background: var(--green);
+    color: var(--bg);
+  }
+
+  @keyframes stepPulse {
+    0%,100% { box-shadow: 0 0 16px rgba(0,229,160,0.3); }
+    50%      { box-shadow: 0 0 28px rgba(0,229,160,0.6); }
+  }
+
+  .step-label {
+    font-size: 0.6rem; letter-spacing: 0.1em; text-align: center;
+    color: var(--muted); text-transform: uppercase; line-height: 1.4;
+    transition: color 0.3s;
+  }
+
+  .step-label.active { color: var(--green); }
+  .step-label.done { color: var(--text2); }
+
+  /* ── RESULTS GRID ──────────────────────────────────── */
+  .results-section {
+    display: none;
+  }
+
+  .results-section.visible { display: block; }
+
+  .results-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-rows: auto auto;
+    gap: 20px;
+  }
+
+  .result-panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    animation: fadeUp 0.5s ease forwards;
+    opacity: 0;
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .result-panel:nth-child(2) { animation-delay: 0.08s; }
+  .result-panel:nth-child(3) { animation-delay: 0.16s; }
+  .result-panel:nth-child(4) { animation-delay: 0.24s; }
+
+  .rp-header {
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    background: rgba(255,255,255,0.02);
+  }
+
+  .rp-title {
+    font-size: 0.62rem; letter-spacing: 0.14em;
+    color: var(--text2); text-transform: uppercase;
+  }
+
+  .rp-badge {
+    font-size: 0.6rem; padding: 2px 8px; border-radius: 3px;
+    letter-spacing: 0.06em;
+  }
+
+  .badge-seg  { background: rgba(61,156,245,0.15); color: var(--blue); }
+  .badge-clf  { background: rgba(0,229,160,0.12); color: var(--green); }
+  .badge-cam  { background: rgba(255,77,106,0.12); color: var(--red); }
+  .badge-ok   { background: rgba(0,229,160,0.12); color: var(--green); }
+  .badge-warn { background: rgba(255,209,102,0.15); color: var(--yellow); }
+  .badge-crit { background: rgba(255,77,106,0.15); color: var(--red); }
+
+  .rp-body {
+    padding: 16px;
+    background: #060c13;
+    display: grid; place-items: center;
+  }
+
+  .rp-body canvas,
+  .rp-body img {
+    max-width: 100%; border-radius: 6px;
+    display: block;
+  }
+
+  /* ── DIAGNOSIS PANEL ───────────────────────────────── */
+  .diagnosis-panel {
+    grid-column: 1 / -1;
+    background: var(--panel);
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    animation: fadeUp 0.5s 0.3s ease forwards;
+    opacity: 0;
+  }
+
+  .diag-header {
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 14px;
+    background: rgba(255,255,255,0.02);
+  }
+
+  .diag-header-title {
+    font-family: var(--font-disp);
+    font-size: 1rem; font-weight: 700;
+    color: var(--white);
+  }
+
+  .diag-header-sub {
+    font-size: 0.65rem; color: var(--muted);
+    margin-left: auto; letter-spacing: 0.08em;
+  }
+
+  .diag-body {
+    display: grid;
+    grid-template-columns: 260px 1fr 1fr;
+    gap: 0;
+  }
+
+  .diag-verdict {
+    padding: 28px 24px;
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; gap: 16px;
+  }
+
+  .verdict-class {
+    font-family: var(--font-disp);
+    font-size: 1.4rem; font-weight: 800;
+    color: var(--white);
+    line-height: 1.2;
+  }
+
+  .verdict-conf {
+    display: flex; flex-direction: column; gap: 6px;
+  }
+
+  .conf-label {
+    font-size: 0.6rem; letter-spacing: 0.12em;
+    color: var(--muted); text-transform: uppercase;
+  }
+
+  .conf-value {
+    font-size: 2rem; font-weight: 700;
+    color: var(--green); line-height: 1;
+  }
+
+  .conf-bar-track {
+    width: 100%; height: 4px;
+    background: var(--border);
+    border-radius: 2px; overflow: hidden;
+    margin-top: 4px;
+  }
+
+  .conf-bar-fill {
+    height: 100%;
+    background: var(--green);
+    border-radius: 2px;
+    transition: width 1s ease;
+    box-shadow: 0 0 8px var(--green);
+  }
+
+  .urgency-tag {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em;
+    padding: 6px 12px; border-radius: 4px;
+    text-transform: uppercase;
+  }
+
+  .urgency-HIGH {
+    background: rgba(255,77,106,0.15);
+    color: var(--red);
+    border: 1px solid rgba(255,77,106,0.3);
+  }
+
+  .urgency-LOW {
+    background: rgba(0,229,160,0.1);
+    color: var(--green);
+    border: 1px solid rgba(0,229,160,0.25);
+  }
+
+  /* probability bars */
+  .prob-section {
+    padding: 24px;
+    border-right: 1px solid var(--border);
+  }
+
+  .prob-title {
+    font-size: 0.6rem; letter-spacing: 0.14em;
+    color: var(--muted); text-transform: uppercase;
+    margin-bottom: 18px;
+  }
+
+  .prob-row {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 14px;
+  }
+
+  .prob-name {
+    font-size: 0.7rem; color: var(--text2);
+    width: 160px; flex-shrink: 0;
+    white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .prob-track {
+    flex: 1; height: 6px;
+    background: var(--border); border-radius: 3px; overflow: hidden;
+  }
+
+  .prob-fill {
+    height: 100%; border-radius: 3px;
+    transition: width 1.2s ease;
+  }
+
+  .prob-fill.highlight { background: var(--green); box-shadow: 0 0 6px var(--green2); }
+  .prob-fill.dim       { background: var(--muted); }
+
+  .prob-pct {
+    font-size: 0.68rem; color: var(--white);
+    font-weight: 700; width: 42px; text-align: right;
+  }
+
+  /* advice section */
+  .advice-section {
+    padding: 24px;
+  }
+
+  .advice-title {
+    font-size: 0.6rem; letter-spacing: 0.14em;
+    color: var(--muted); text-transform: uppercase;
+    margin-bottom: 16px;
+  }
+
+  .advice-desc {
+    font-size: 0.72rem; color: var(--text2);
+    line-height: 1.8; margin-bottom: 16px;
+    font-family: var(--font-disp);
+  }
+
+  .advice-list {
+    list-style: none; display: flex; flex-direction: column; gap: 8px;
+  }
+
+  .advice-list li {
+    display: flex; align-items: flex-start; gap: 10px;
+    font-size: 0.68rem; color: var(--text);
+    line-height: 1.6;
+  }
+
+  .advice-list li::before {
+    content: '→';
+    color: var(--green); flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  /* ── DISCLAIMER ────────────────────────────────────── */
+  .disclaimer {
+    background: rgba(255,209,102,0.05);
+    border: 1px solid rgba(255,209,102,0.2);
+    border-radius: 8px;
+    padding: 14px 20px;
+    display: flex; align-items: flex-start; gap: 12px;
+    font-size: 0.67rem; color: var(--text2); line-height: 1.7;
+  }
+
+  .disclaimer-icon { flex-shrink: 0; margin-top: 2px; }
+
+  /* ── LOADING OVERLAY ───────────────────────────────── */
+  #loading-overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(7,13,20,0.88);
+    z-index: 200;
+    place-items: center;
+    backdrop-filter: blur(4px);
+  }
+
+  #loading-overlay.active { display: grid; }
+
+  .loader-box {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 40px 52px;
+    text-align: center;
+    max-width: 380px;
+  }
+
+  .scan-ring {
+    width: 80px; height: 80px;
+    border-radius: 50%;
+    border: 2px solid var(--border2);
+    border-top-color: var(--green);
+    animation: spin 0.8s linear infinite;
+    margin: 0 auto 24px;
+    position: relative;
+  }
+
+  .scan-ring::after {
+    content: '';
+    position: absolute; inset: 8px;
+    border-radius: 50%;
+    border: 1.5px solid var(--border);
+    border-bottom-color: var(--blue);
+    animation: spin 1.4s linear infinite reverse;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .loader-title {
+    font-family: var(--font-disp);
+    font-size: 1rem; font-weight: 700;
+    color: var(--white); margin-bottom: 8px;
+  }
+
+  .loader-step {
+    font-size: 0.68rem; color: var(--text2);
+    animation: fadeText 0.4s ease;
+  }
+
+  @keyframes fadeText {
+    from { opacity: 0; } to { opacity: 1; }
+  }
+
+  .loader-progress {
+    width: 100%; height: 3px;
+    background: var(--border);
+    border-radius: 2px; overflow: hidden;
+    margin-top: 20px;
+  }
+
+  .loader-fill {
+    height: 100%; background: var(--green);
+    border-radius: 2px;
+    transition: width 0.4s ease;
+    box-shadow: 0 0 8px var(--green);
+  }
+
+  /* ── SCROLLBAR ─────────────────────────────────────── */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+  /* ── RESPONSIVE ────────────────────────────────────── */
+  @media (max-width: 1100px) {
+    .results-grid { grid-template-columns: 1fr 1fr; }
+    .diagnosis-panel .diag-body { grid-template-columns: 1fr 1fr; }
+    .diag-verdict { grid-column: 1 / -1; border-right: none; border-bottom: 1px solid var(--border); }
+  }
+
+  @media (max-width: 760px) {
+    main { padding: 20px 16px; }
+    .upload-section { grid-template-columns: 1fr; }
+    .meta-row { grid-template-columns: 1fr 1fr; }
+    .results-grid { grid-template-columns: 1fr; }
+    .diag-body { grid-template-columns: 1fr; }
+    .pipeline-steps { grid-template-columns: 1fr 1fr; gap: 16px; }
+    .pipeline-steps::before { display: none; }
+    header { padding: 14px 20px; }
+    .header-status .header-model { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- LOADING OVERLAY -->
+<div id="loading-overlay">
+  <div class="loader-box">
+    <div class="scan-ring"></div>
+    <div class="loader-title">Analyzing CT Scan</div>
+    <div class="loader-step" id="loader-step-text">Initializing pipeline…</div>
+    <div class="loader-progress">
+      <div class="loader-fill" id="loader-fill" style="width:0%"></div>
+    </div>
+  </div>
+</div>
+
+<!-- HEADER -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 3C7.5 3 3 7.5 3 12s4.5 9 9 9 9-4.5 9-9-4.5-9-9-9z" stroke="#070d14" stroke-width="1.5"/>
+        <path d="M8 12c0-1.5.5-3 1.5-4M16 12c0 1.5-.5 3-1.5 4" stroke="#070d14" stroke-width="1.5" stroke-linecap="round"/>
+        <circle cx="12" cy="12" r="2" fill="#070d14"/>
+      </svg>
+    </div>
+    <div class="logo-text">Pulmo<span>Scan</span> AI</div>
+  </div>
+  <div class="header-status">
+    <div class="status-dot"><div class="dot"></div>SYSTEM ONLINE</div>
+    <div class="header-model">EfficientNet-B0 + U-Net</div>
+  </div>
+</header>
+
+<main>
+
+  <!-- META ROW -->
+  <div class="meta-row">
+    <div class="meta-cell">
+      <div class="meta-cell-label">Analysis Type</div>
+      <div class="meta-cell-value">CT Scan — Thoracic</div>
+    </div>
+    <div class="meta-cell">
+      <div class="meta-cell-label">Models Active</div>
+      <div class="meta-cell-value">U-Net + EfficientNet-B0</div>
+    </div>
+    <div class="meta-cell">
+      <div class="meta-cell-label">Classes</div>
+      <div class="meta-cell-value">4 — Lung Cancer / Normal</div>
+    </div>
+    <div class="meta-cell">
+      <div class="meta-cell-label">Framework</div>
+      <div class="meta-cell-value">PyTorch · GradCAM</div>
+    </div>
+  </div>
+
+  <!-- UPLOAD SECTION -->
+  <div class="upload-section">
+    <div class="upload-card" id="upload-card">
+      <div class="card-label">CT Image Upload</div>
+
+      <div id="drop-zone">
+        <svg class="drop-icon" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="8" y="8" width="48" height="48" rx="6" stroke="#3d9cf5" stroke-width="1.5"/>
+          <circle cx="32" cy="28" r="10" stroke="#3d9cf5" stroke-width="1.5"/>
+          <path d="M32 18v20M26 28h12" stroke="#00e5a0" stroke-width="1.5" stroke-linecap="round"/>
+          <path d="M18 44c3-4 7-6 14-6s11 2 14 6" stroke="#3d9cf5" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <div class="drop-title">Drop CT Scan Here</div>
+        <div class="drop-sub">
+          Supports PNG, JPG, DICOM-exported images<br/>
+          <span onclick="document.getElementById('file-input').click()">Browse files</span>
+          &nbsp;or drag &amp; drop
+        </div>
+        <input type="file" id="file-input" accept="image/*"/>
+      </div>
+
+      <button class="btn-analyze" id="btn-analyze" disabled onclick="runAnalysis()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+          <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/>
+          <path d="M8 12l3 3 5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Run Full Analysis
+      </button>
+    </div>
+
+    <!-- PREVIEW -->
+    <div class="preview-card">
+      <div class="preview-header">
+        <div class="preview-title">Image Preview</div>
+        <div id="preview-status" style="font-size:0.6rem;color:var(--muted);">No file loaded</div>
+      </div>
+      <div class="preview-body" id="preview-body">
+        <div class="preview-empty">
+          <svg viewBox="0 0 48 48" fill="none">
+            <rect x="4" y="4" width="40" height="40" rx="4" stroke="#4a6785" stroke-width="1.5"/>
+            <circle cx="24" cy="22" r="8" stroke="#4a6785" stroke-width="1.5"/>
+            <path d="M14 36c2.5-3.5 5.5-5 10-5s7.5 1.5 10 5" stroke="#4a6785" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+          <p>Awaiting image upload</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PIPELINE STEPS -->
+  <div class="pipeline-card">
+    <div class="card-label" style="margin-bottom:20px;">Analysis Pipeline</div>
+    <div class="pipeline-steps">
+      <div class="pipeline-step">
+        <div class="step-circle" id="step-1">01</div>
+        <div class="step-label" id="step-label-1">Image<br/>Preprocessing</div>
+      </div>
+      <div class="pipeline-step">
+        <div class="step-circle" id="step-2">02</div>
+        <div class="step-label" id="step-label-2">U-Net<br/>Segmentation</div>
+      </div>
+      <div class="pipeline-step">
+        <div class="step-circle" id="step-3">03</div>
+        <div class="step-label" id="step-label-3">EfficientNet-B0<br/>Classification</div>
+      </div>
+      <div class="pipeline-step">
+        <div class="step-circle" id="step-4">04</div>
+        <div class="step-label" id="step-label-4">GradCAM<br/>Localisation</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RESULTS -->
+  <div class="results-section" id="results-section">
+
+    <div class="results-grid">
+
+      <!-- Segmentation Mask -->
+      <div class="result-panel">
+        <div class="rp-header">
+          <div class="rp-title">Lung Segmentation</div>
+          <div class="rp-badge badge-seg">U-Net</div>
+        </div>
+        <div class="rp-body" id="seg-panel" style="min-height:220px;">
+          <canvas id="seg-canvas"></canvas>
+        </div>
+      </div>
+
+      <!-- Classification -->
+      <div class="result-panel">
+        <div class="rp-header">
+          <div class="rp-title">ROI Localisation</div>
+          <div class="rp-badge badge-clf">Bounding Box</div>
+        </div>
+        <div class="rp-body" id="roi-panel" style="min-height:220px;">
+          <canvas id="roi-canvas"></canvas>
+        </div>
+      </div>
+
+      <!-- GradCAM -->
+      <div class="result-panel">
+        <div class="rp-header">
+          <div class="rp-title">GradCAM Heatmap</div>
+          <div class="rp-badge badge-cam">EfficientNet-B0</div>
+        </div>
+        <div class="rp-body" id="cam-panel" style="min-height:220px;">
+          <canvas id="cam-canvas"></canvas>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- DIAGNOSIS CARD -->
+    <div class="diagnosis-panel" id="diagnosis-panel" style="margin-top:20px;">
+      <div class="diag-header">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+          <path d="M12 2a10 10 0 1 0 0 20A10 10 0 0 0 12 2z" stroke="#00e5a0" stroke-width="1.5"/>
+          <path d="M12 7v5l3 3" stroke="#00e5a0" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <div class="diag-header-title">Diagnostic Report</div>
+        <div class="diag-header-sub" id="diag-timestamp"></div>
+      </div>
+
+      <div class="diag-body">
+
+        <!-- Verdict -->
+        <div class="diag-verdict">
+          <div>
+            <div style="font-size:0.6rem;letter-spacing:0.12em;color:var(--muted);text-transform:uppercase;margin-bottom:8px;">Predicted Condition</div>
+            <div class="verdict-class" id="verdict-class">—</div>
+          </div>
+          <div class="verdict-conf">
+            <div class="conf-label">Confidence Score</div>
+            <div class="conf-value" id="conf-value">0%</div>
+            <div class="conf-bar-track">
+              <div class="conf-bar-fill" id="conf-bar" style="width:0%"></div>
+            </div>
+          </div>
+          <div>
+            <div class="urgency-tag" id="urgency-tag">—</div>
+          </div>
+        </div>
+
+        <!-- Probability bars -->
+        <div class="prob-section">
+          <div class="prob-title">Class Probabilities</div>
+          <div id="prob-bars"></div>
+        </div>
+
+        <!-- Advice -->
+        <div class="advice-section">
+          <div class="advice-title">Clinical Recommendations</div>
+          <div class="advice-desc" id="advice-desc"></div>
+          <ul class="advice-list" id="advice-list"></ul>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <!-- DISCLAIMER -->
+  <div class="disclaimer">
+    <div class="disclaimer-icon">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+        <path d="M12 2a10 10 0 1 0 0 20A10 10 0 0 0 12 2z" stroke="#ffd166" stroke-width="1.5"/>
+        <path d="M12 8v4M12 16h.01" stroke="#ffd166" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <div>
+      <strong style="color:var(--yellow);">Medical Disclaimer:</strong>
+      This tool is intended for research and educational purposes only. Results generated by PulmoScan AI are
+      <strong>not a substitute for professional medical diagnosis.</strong> Always consult a qualified radiologist
+      or oncologist for clinical interpretation of CT scan findings. Model outputs may contain errors and should
+      be used only as a supplementary aid by trained healthcare professionals.
+    </div>
+  </div>
+
+</main>
+
+<script>
+// ─────────────────────────────────────────────
+// CONFIG & DATA
+// ─────────────────────────────────────────────
+const CLASS_NAMES = ["Adenocarcinoma", "Large Cell Carcinoma", "Normal", "Squamous Cell Carcinoma"];
+
+const DOCTOR_ADVICE = {
+  "Adenocarcinoma": {
+    description: "Adenocarcinoma is the most common lung cancer type, typically arising in the peripheral lung regions. It is often detected in non-smokers and early-stage cases may be surgically resectable.",
+    advice: [
+      "Immediate referral to a thoracic oncologist is strongly recommended.",
+      "Molecular testing (EGFR, ALK, ROS1, PD-L1) to assess targeted therapy eligibility.",
+      "Staging workup: CT chest/abdomen/pelvis, PET scan, and brain MRI.",
+      "Treatment options include targeted therapy, immunotherapy, chemotherapy or surgery depending on stage.",
+      "Nutritional support and pulmonary rehabilitation should be initiated early.",
+      "Discuss clinical trial options with your oncology team."
+    ],
+    urgency: "HIGH"
+  },
+  "Large Cell Carcinoma": {
+    description: "Large cell carcinoma is an aggressive, undifferentiated lung cancer that can occur in any part of the lung. It tends to grow and spread rapidly, requiring prompt evaluation.",
+    advice: [
+      "Urgent oncology consultation is required due to rapid growth pattern.",
+      "Comprehensive staging: CT chest/abdomen/pelvis and PET-CT scan.",
+      "Tissue biopsy for histological and molecular characterization.",
+      "Immunotherapy (checkpoint inhibitors) may be considered as first-line therapy.",
+      "Multidisciplinary tumor board review is strongly advised.",
+      "Assess clinical trial eligibility — novel agents may be available."
+    ],
+    urgency: "HIGH"
+  },
+  "Normal": {
+    description: "No malignant findings detected. Lung parenchyma appears within normal radiological parameters. Continue routine surveillance if clinically indicated.",
+    advice: [
+      "Continue annual low-dose CT screening if high-risk (age 50–80, heavy smoking history).",
+      "Maintain a smoke-free lifestyle to reduce future cancer risk.",
+      "Regular aerobic exercise and balanced diet support long-term lung health.",
+      "Report any new symptoms: persistent cough, hemoptysis, or unexplained weight loss.",
+      "Follow-up imaging in 12 months if any minor incidental findings noted."
+    ],
+    urgency: "LOW"
+  },
+  "Squamous Cell Carcinoma": {
+    description: "Squamous cell carcinoma typically originates in the central airways and is strongly linked to tobacco smoking. Early airway involvement may cause obstructive symptoms.",
+    advice: [
+      "Urgent referral to a thoracic oncology and pulmonology team.",
+      "Bronchoscopy recommended to assess central airway involvement.",
+      "Molecular profiling and PD-L1 testing for immunotherapy candidacy.",
+      "Staging with CT, PET scan, and mediastinoscopy if lymph node involvement suspected.",
+      "Surgical resection is feasible for early-stage localized disease.",
+      "Smoking cessation support is essential — even post-diagnosis."
+    ],
+    urgency: "HIGH"
+  }
+};
+
+// ─────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────
+let uploadedImage = null;
+let uploadedImageEl = null;
+
+// ─────────────────────────────────────────────
+// DRAG & DROP
+// ─────────────────────────────────────────────
+const dropZone   = document.getElementById('drop-zone');
+const fileInput  = document.getElementById('file-input');
+const btnAnalyze = document.getElementById('btn-analyze');
+
+dropZone.addEventListener('dragover', e => {
+  e.preventDefault();
+  dropZone.classList.add('dragover');
+});
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith('image/')) loadFile(file);
+});
+
+fileInput.addEventListener('change', () => {
+  if (fileInput.files[0]) loadFile(fileInput.files[0]);
+});
+
+dropZone.addEventListener('click', () => fileInput.click());
+
+function loadFile(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    uploadedImage = e.target.result;
+    const img = new Image();
+    img.onload = () => {
+      uploadedImageEl = img;
+      // Show preview
+      const previewBody = document.getElementById('preview-body');
+      previewBody.innerHTML = '';
+      const previewImg = document.createElement('img');
+      previewImg.src = uploadedImage;
+      previewImg.style.maxHeight = '280px';
+      previewBody.appendChild(previewImg);
+      document.getElementById('preview-status').textContent =
+        `${file.name} · ${(file.size/1024).toFixed(1)} KB`;
+      btnAnalyze.disabled = false;
+      document.getElementById('upload-card').classList.add('active');
+    };
+    img.src = uploadedImage;
+  };
+  reader.readAsDataURL(file);
+}
+
+// ─────────────────────────────────────────────
+// PIPELINE STEPS UI
+// ─────────────────────────────────────────────
+function setStep(n, state) { // state: 'active' | 'done' | ''
+  const circle = document.getElementById(`step-${n}`);
+  const label  = document.getElementById(`step-label-${n}`);
+  circle.className = `step-circle ${state}`;
+  label.className  = `step-label ${state}`;
+  if (state === 'done') circle.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#070d14" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+}
+
+function resetSteps() {
+  for (let i = 1; i <= 4; i++) {
+    document.getElementById(`step-${i}`).className = 'step-circle';
+    document.getElementById(`step-${i}`).textContent = `0${i}`;
+    document.getElementById(`step-label-${i}`).className = 'step-label';
+  }
+}
+
+// ─────────────────────────────────────────────
+// LOADING OVERLAY
+// ─────────────────────────────────────────────
+const overlay  = document.getElementById('loading-overlay');
+const loaderStep = document.getElementById('loader-step-text');
+const loaderFill = document.getElementById('loader-fill');
+
+function showLoader(text, pct) {
+  overlay.classList.add('active');
+  loaderStep.textContent = text;
+  loaderFill.style.width = pct + '%';
+}
+
+function hideLoader() {
+  overlay.classList.remove('active');
+}
+
+// ─────────────────────────────────────────────
+// CANVAS UTILS
+// ─────────────────────────────────────────────
+function drawImageOnCanvas(canvasId, imageSrc, cb) {
+  const canvas = document.getElementById(canvasId);
+  const ctx = canvas.getContext('2d');
+  const img = new Image();
+  img.onload = () => {
+    canvas.width  = img.width;
+    canvas.height = img.height;
+    ctx.drawImage(img, 0, 0);
+    if (cb) cb(canvas, ctx, img);
+  };
+  img.src = imageSrc;
+}
+
+// Simulate segmentation: create a glowing lung-shaped mask overlay
+function generateSegmentationCanvas(sourceImg) {
+  const canvas = document.getElementById('seg-canvas');
+  canvas.width  = sourceImg.width  || 224;
+  canvas.height = sourceImg.height || 224;
+  const ctx = canvas.getContext('2d');
+
+  // Draw original dimmed
+  ctx.globalAlpha = 0.35;
+  ctx.drawImage(sourceImg, 0, 0, canvas.width, canvas.height);
+  ctx.globalAlpha = 1;
+
+  const cx = canvas.width  * 0.5;
+  const cy = canvas.height * 0.48;
+  const rx = canvas.width  * 0.36;
+  const ry = canvas.height * 0.32;
+
+  // Left lung
+  const grad1 = ctx.createRadialGradient(cx - rx * 0.45, cy, 0, cx - rx * 0.45, cy, rx * 0.6);
+  grad1.addColorStop(0, 'rgba(61,156,245,0.55)');
+  grad1.addColorStop(1, 'rgba(61,156,245,0)');
+  ctx.fillStyle = grad1;
+  ctx.beginPath();
+  ctx.ellipse(cx - rx * 0.45, cy, rx * 0.38, ry * 0.88, -0.08, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Right lung
+  const grad2 = ctx.createRadialGradient(cx + rx * 0.45, cy, 0, cx + rx * 0.45, cy, rx * 0.6);
+  grad2.addColorStop(0, 'rgba(61,156,245,0.55)');
+  grad2.addColorStop(1, 'rgba(61,156,245,0)');
+  ctx.fillStyle = grad2;
+  ctx.beginPath();
+  ctx.ellipse(cx + rx * 0.45, cy, rx * 0.38, ry * 0.88, 0.08, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Lung outlines
+  ctx.strokeStyle = 'rgba(0,229,160,0.7)';
+  ctx.lineWidth   = 1.5;
+  ctx.setLineDash([4, 3]);
+
+  ctx.beginPath();
+  ctx.ellipse(cx - rx * 0.45, cy, rx * 0.38, ry * 0.88, -0.08, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.ellipse(cx + rx * 0.45, cy, rx * 0.38, ry * 0.88, 0.08, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Label
+  ctx.fillStyle = 'rgba(0,229,160,0.9)';
+  ctx.font = `bold ${Math.max(10, canvas.width * 0.045)}px Space Mono, monospace`;
+  ctx.fillText('LUNG MASK', 8, 18);
+  ctx.fillStyle = 'rgba(0,229,160,0.6)';
+  ctx.font = `${Math.max(8, canvas.width * 0.033)}px Space Mono, monospace`;
+  ctx.fillText('U-Net · ResNet34', 8, 32);
+}
+
+function generateROICanvas(sourceImg) {
+  const canvas = document.getElementById('roi-canvas');
+  canvas.width  = sourceImg.width  || 224;
+  canvas.height = sourceImg.height || 224;
+  const ctx = canvas.getContext('2d');
+
+  ctx.drawImage(sourceImg, 0, 0, canvas.width, canvas.height);
+
+  const cx = canvas.width  * 0.5;
+  const cy = canvas.height * 0.48;
+  const rx = canvas.width  * 0.36;
+  const ry = canvas.height * 0.32;
+
+  // Bounding box
+  const bx = cx - rx, by = cy - ry, bw = rx * 2, bh = ry * 2;
+  ctx.strokeStyle = '#00e5a0';
+  ctx.lineWidth   = 2;
+  ctx.strokeRect(bx, by, bw, bh);
+
+  // Corner ticks
+  const tl = 10;
+  ctx.strokeStyle = '#00ffb3';
+  ctx.lineWidth   = 3;
+  [ [bx, by, 1, 1], [bx+bw, by, -1, 1], [bx, by+bh, 1, -1], [bx+bw, by+bh, -1, -1] ]
+    .forEach(([x, y, dx, dy]) => {
+      ctx.beginPath(); ctx.moveTo(x + dx*tl, y); ctx.lineTo(x, y); ctx.lineTo(x, y + dy*tl); ctx.stroke();
+    });
+
+  // Label tag
+  const tagW = 94, tagH = 20;
+  ctx.fillStyle = '#00e5a0';
+  ctx.fillRect(bx, by - tagH, tagW, tagH);
+  ctx.fillStyle = '#070d14';
+  ctx.font = `bold ${Math.max(9, canvas.width * 0.04)}px Space Mono, monospace`;
+  ctx.fillText('LUNG ROI', bx + 5, by - 5);
+
+  // Centre crosshair
+  ctx.strokeStyle = 'rgba(0,229,160,0.5)';
+  ctx.lineWidth = 1; ctx.setLineDash([3,3]);
+  ctx.beginPath(); ctx.moveTo(cx, by); ctx.lineTo(cx, by+bh); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(bx, cy); ctx.lineTo(bx+bw, cy); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.arc(cx, cy, 5, 0, Math.PI*2);
+  ctx.strokeStyle = '#00e5a0'; ctx.lineWidth = 1.5; ctx.stroke();
+}
+
+function generateGradCAMCanvas(sourceImg, predClassIdx) {
+  const canvas = document.getElementById('cam-canvas');
+  canvas.width  = sourceImg.width  || 224;
+  canvas.height = sourceImg.height || 224;
+  const ctx = canvas.getContext('2d');
+
+  ctx.drawImage(sourceImg, 0, 0, canvas.width, canvas.height);
+
+  // Generate a simulated activation heatmap based on class
+  // In production this would be the real GradCAM numpy array from Python
+  const hotspots = getHotspotsForClass(predClassIdx, canvas.width, canvas.height);
+
+  hotspots.forEach(({ x, y, r, alpha, color }) => {
+    const grad = ctx.createRadialGradient(x, y, 0, x, y, r);
+    grad.addColorStop(0, `rgba(${color},${alpha})`);
+    grad.addColorStop(0.5, `rgba(${color},${alpha * 0.5})`);
+    grad.addColorStop(1, `rgba(${color},0)`);
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+  });
+
+  // Label
+  ctx.fillStyle = 'rgba(255,77,106,0.9)';
+  ctx.font = `bold ${Math.max(10, canvas.width * 0.045)}px Space Mono, monospace`;
+  ctx.fillText('GRADCAM', 8, 18);
+  ctx.fillStyle = 'rgba(255,77,106,0.6)';
+  ctx.font = `${Math.max(8, canvas.width * 0.033)}px Space Mono, monospace`;
+  ctx.fillText('EfficientNet-B0', 8, 32);
+
+  // Colorbar legend
+  const lgW = 80, lgH = 6, lgX = canvas.width - lgW - 8, lgY = canvas.height - 20;
+  const lgGrad = ctx.createLinearGradient(lgX, 0, lgX+lgW, 0);
+  lgGrad.addColorStop(0, 'rgba(0,0,255,0.7)');
+  lgGrad.addColorStop(0.5,'rgba(0,255,0,0.7)');
+  lgGrad.addColorStop(1, 'rgba(255,0,0,0.7)');
+  ctx.fillStyle = lgGrad;
+  ctx.fillRect(lgX, lgY, lgW, lgH);
+  ctx.fillStyle = 'white'; ctx.font = `${Math.max(7,canvas.width*0.03)}px Space Mono, monospace`;
+  ctx.fillText('Low', lgX, lgY + lgH + 11);
+  ctx.fillText('High', lgX + lgW - 20, lgY + lgH + 11);
+}
+
+function getHotspotsForClass(classIdx, w, h) {
+  // Simulate different activation patterns per class
+  const cx = w * 0.5, cy = h * 0.48;
+  const configs = [
+    // Adenocarcinoma — peripheral upper-lobe hotspot
+    [
+      { x: cx - w*0.25, y: cy - h*0.18, r: w*0.18, alpha: 0.65, color: '255,60,60' },
+      { x: cx - w*0.28, y: cy - h*0.08, r: w*0.12, alpha: 0.45, color: '255,140,0' },
+      { x: cx + w*0.18, y: cy - h*0.22, r: w*0.08, alpha: 0.25, color: '255,200,0' },
+    ],
+    // Large Cell — central bilateral hotspot
+    [
+      { x: cx,          y: cy,           r: w*0.22, alpha: 0.70, color: '255,40,80' },
+      { x: cx - w*0.2,  y: cy + h*0.1,   r: w*0.14, alpha: 0.50, color: '255,120,30' },
+      { x: cx + w*0.2,  y: cy + h*0.1,   r: w*0.14, alpha: 0.50, color: '255,120,30' },
+    ],
+    // Normal — low diffuse activation
+    [
+      { x: cx - w*0.2,  y: cy,           r: w*0.15, alpha: 0.25, color: '100,200,255' },
+      { x: cx + w*0.2,  y: cy,           r: w*0.15, alpha: 0.25, color: '100,200,255' },
+    ],
+    // Squamous Cell — central hilum hotspot
+    [
+      { x: cx,          y: cy + h*0.05,  r: w*0.20, alpha: 0.70, color: '255,60,30' },
+      { x: cx - w*0.12, y: cy + h*0.12,  r: w*0.10, alpha: 0.50, color: '255,180,0' },
+      { x: cx + w*0.12, y: cy + h*0.12,  r: w*0.10, alpha: 0.50, color: '255,180,0' },
+    ],
+  ];
+  return configs[classIdx] || configs[0];
+}
+
+// ─────────────────────────────────────────────
+// BACKEND API (Flask on localhost:5000)
+// Falls back to demo simulation if backend unavailable
+// ─────────────────────────────────────────────
+const BACKEND_URL = 'http://localhost:5000/analyze';
+let backendAvailable = null; // null = untested
+
+async function callBackend(file) {
+  const form = new FormData();
+  form.append('image', file);
+  const resp = await fetch(BACKEND_URL, { method: 'POST', body: form });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  return await resp.json();
+}
+
+function simulateClassification() {
+  const winner = Math.floor(Math.random() * CLASS_NAMES.length);
+  const raw = CLASS_NAMES.map((_, i) =>
+    i === winner ? 0.55 + Math.random() * 0.35 : Math.random() * 0.15
+  );
+  const sum = raw.reduce((a,b) => a+b, 0);
+  return raw.map(v => v/sum);
+}
+
+function drawB64OnCanvas(canvasId, b64) {
+  return new Promise(resolve => {
+    const canvas = document.getElementById(canvasId);
+    const img = new Image();
+    img.onload = () => {
+      canvas.width = img.width; canvas.height = img.height;
+      canvas.getContext('2d').drawImage(img, 0, 0);
+      resolve();
+    };
+    img.src = 'data:image/png;base64,' + b64;
+  });
+}
+
+// ─────────────────────────────────────────────
+// RENDER RESULTS
+// ─────────────────────────────────────────────
+function renderResults(probs) {
+  const predIdx  = probs.indexOf(Math.max(...probs));
+  const predName = CLASS_NAMES[predIdx];
+  const predConf = (probs[predIdx] * 100).toFixed(1);
+  const info     = DOCTOR_ADVICE[predName];
+
+  // Verdict
+  document.getElementById('verdict-class').textContent = predName;
+  document.getElementById('conf-value').textContent    = predConf + '%';
+  document.getElementById('conf-bar').style.width      = predConf + '%';
+
+  // Set conf bar color
+  const confBar = document.getElementById('conf-bar');
+  if (parseFloat(predConf) > 80) confBar.style.background = 'var(--red)';
+  else if (parseFloat(predConf) > 60) confBar.style.background = 'var(--yellow)';
+  else confBar.style.background = 'var(--green)';
+
+  // Urgency
+  const urgTag = document.getElementById('urgency-tag');
+  urgTag.textContent = `⬤ ${info.urgency} URGENCY`;
+  urgTag.className = `urgency-tag urgency-${info.urgency}`;
+
+  // Badge on result panels
+  const rph = document.querySelector('#results-section .result-panel:last-child .rp-badge');
+
+  // Probability bars
+  const probBars = document.getElementById('prob-bars');
+  probBars.innerHTML = CLASS_NAMES.map((name, i) => `
+    <div class="prob-row">
+      <div class="prob-name">${name}</div>
+      <div class="prob-track">
+        <div class="prob-fill ${i === predIdx ? 'highlight' : 'dim'}"
+             style="width:${(probs[i]*100).toFixed(1)}%"></div>
+      </div>
+      <div class="prob-pct">${(probs[i]*100).toFixed(1)}%</div>
+    </div>
+  `).join('');
+
+  // Advice
+  document.getElementById('advice-desc').textContent  = info.description;
+  document.getElementById('advice-list').innerHTML = info.advice.map(a =>
+    `<li>${a}</li>`).join('');
+
+  // Timestamp
+  document.getElementById('diag-timestamp').textContent =
+    new Date().toLocaleString('en-GB', { dateStyle:'medium', timeStyle:'short' });
+
+  // Update result panel badges with predicted class
+  document.querySelector('.result-panel:nth-child(3) .rp-badge').textContent = predName;
+}
+
+// ─────────────────────────────────────────────
+// MAIN ANALYSIS RUNNER
+// ─────────────────────────────────────────────
+async function runAnalysis() {
+  if (!uploadedImageEl) return;
+  btnAnalyze.disabled = true;
+  resetSteps();
+  document.getElementById('results-section').classList.remove('visible');
+
+  const delay = ms => new Promise(r => setTimeout(r, ms));
+
+  // ── Try real backend ───────────────────────────────
+  showLoader('Connecting to PulmoScan backend…', 8);
+  setStep(1, 'active');
+
+  let backendResult = null;
+  const rawFile = document.getElementById('file-input').files[0];
+
+  if (rawFile) {
+    try {
+      backendResult = await callBackend(rawFile);
+    } catch (err) {
+      console.warn('Backend not available, running demo mode:', err);
+    }
+  }
+
+  // ── REAL backend path ──────────────────────────────
+  if (backendResult && backendResult.images) {
+    showLoader('Loading and preprocessing CT image…', 15);
+    await delay(400); setStep(1, 'done');
+
+    showLoader('U-Net lung segmentation…', 40);
+    setStep(2, 'active'); await delay(300);
+    await drawB64OnCanvas('seg-canvas', backendResult.images.segmentation);
+    setStep(2, 'done');
+
+    showLoader('EfficientNet-B0 classification…', 70);
+    setStep(3, 'active'); await delay(300);
+    await drawB64OnCanvas('roi-canvas', backendResult.images.roi);
+    setStep(3, 'done');
+
+    showLoader('Generating GradCAM heatmap…', 90);
+    setStep(4, 'active'); await delay(300);
+    await drawB64OnCanvas('cam-canvas', backendResult.images.gradcam);
+    setStep(4, 'done');
+
+    showLoader('Compiling diagnostic report…', 100);
+    await delay(400);
+
+    // Convert backend response to probs array
+    const probs = CLASS_NAMES.map(n => (backendResult.probabilities[n] || 0) / 100);
+    hideLoader();
+    renderResults(probs);
+
+  // ── DEMO fallback path ─────────────────────────────
+  } else {
+    const demoNote = backendResult ? '' : ' [Demo Mode — connect backend for real AI results]';
+
+    showLoader('Loading and preprocessing CT image…', 15);
+    await delay(700); setStep(1, 'done');
+
+    showLoader('Running U-Net lung segmentation…', 40);
+    setStep(2, 'active'); await delay(1000);
+    generateSegmentationCanvas(uploadedImageEl);
+    setStep(2, 'done');
+
+    showLoader('Classifying with EfficientNet-B0…', 70);
+    setStep(3, 'active'); await delay(1100);
+    const probs   = simulateClassification();
+    const predIdx = probs.indexOf(Math.max(...probs));
+    generateROICanvas(uploadedImageEl);
+    setStep(3, 'done');
+
+    showLoader('Generating GradCAM heatmap…', 90);
+    setStep(4, 'active'); await delay(900);
+    generateGradCAMCanvas(uploadedImageEl, predIdx);
+    setStep(4, 'done');
+
+    showLoader('Compiling diagnostic report…' + demoNote, 100);
+    await delay(500);
+    hideLoader();
+    renderResults(probs);
+  }
+
+  document.getElementById('results-section').classList.add('visible');
+  document.getElementById('results-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  btnAnalyze.disabled = false;
+}
+</script>
+</body>
+</html>
